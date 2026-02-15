@@ -1,6 +1,13 @@
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 
-qc = QuantumCircuit(2)
+qr = QuantumRegister(2)
+cr = ClassicalRegister(2)
+
+qc = QuantumCircuit(qr, cr)
 
 qc.h(0)
 qc.cx(0, 1)
+qc.x(1)
+qc.swap(0, 1)
+
+qc.measure(qr, cr)
