@@ -17,4 +17,9 @@ device = VirtualNISQDevice(nr_qubits, gates, edges)
 device.print_properties()
 
 qc = parser.load_circuit_from_file("idealCircuit.py")
+
 parser.get_circuit_data(qc)
+
+new_qc = device.transpile_circuit(qc)
+
+parser.get_circuit_data(new_qc)
