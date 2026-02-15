@@ -1,7 +1,8 @@
 class CircuitGate:
-    def __init__(self, name, qubits, params=None):
+    def __init__(self, name, qubits, clbits, params=None):
         self.name = name
         self.qubits = qubits
+        self.clbits = clbits
         self.params = params or []
 
     def get_properties(self):
