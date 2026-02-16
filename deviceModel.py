@@ -41,4 +41,7 @@ class VirtualNISQDevice:
             routing_method="sabre"
         )
 
+        final_indices = new_quantum_circuit.layout.final_index_layout()
+        self.logical_to_physical_mapping = {i: phys_idx for i, phys_idx in enumerate(final_indices)}
+
         return new_quantum_circuit
