@@ -1,4 +1,5 @@
 from deviceModel import VirtualNISQDevice
+from qiskit_aer import AerSimulator
 import circuitParser as parser
 
 nr_qubits = 8
@@ -21,3 +22,16 @@ new_qc = device.transpile_circuit(qc)
 
 circuit_representation = parser.get_circuit_data(new_qc)
 circuit_representation.print_circuit()
+
+sim = AerSimulator()
+
+result = sim.run(qc, shots=1000).result()
+counts = result.get_counts()
+print(counts)
+
+result = sim.run(new_qc, shots=1000).result()
+counts = result.get_counts()
+print(counts)
+
+print(qc.draw())
+print(new_qc.draw())

@@ -1,5 +1,6 @@
 import networkx as nx
 from qiskit import transpile
+from qiskit.transpiler import CouplingMap
 
 class VirtualNISQDevice:
     def __init__(self, num_qubits, gates_spec, edges):
@@ -7,6 +8,7 @@ class VirtualNISQDevice:
         self.gates = gates_spec
         self.coupling_map = nx.Graph()
         self.coupling_map.add_edges_from(edges)
+        self.edges = edges
     
     def print_properties(self):
         print("The properties for this device are:")
@@ -27,9 +29,15 @@ class VirtualNISQDevice:
 
         gate_names = [gate[0] for gate in self.gates]
 
+        print(list(self.coupling_map.edges()))
+
+        coupling = CouplingMap(couplinglist=list(self.coupling_map.edges()))
+
         new_quantum_circuit = transpile(
             quantum_circuit,
-            basis_gates=gate_names
+            basis_gates=gate_names,
+            coupling_map=coupling,
+            routing_method="sabre"
         )
 
         return new_quantum_circuit
