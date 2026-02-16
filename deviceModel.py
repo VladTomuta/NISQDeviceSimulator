@@ -1,4 +1,3 @@
-import networkx as nx
 from qiskit import transpile
 from qiskit.transpiler import CouplingMap
 
@@ -6,8 +5,6 @@ class VirtualNISQDevice:
     def __init__(self, num_qubits, gates_spec, edges):
         self.num_qubits = num_qubits
         self.gates = gates_spec
-        self.coupling_map = nx.Graph()
-        self.coupling_map.add_edges_from(edges)
         self.edges = edges
     
     def print_properties(self):
@@ -18,20 +15,24 @@ class VirtualNISQDevice:
         for gate in self.gates:
             print("        Gate " + gate[0] + " - Error rate: " + str(gate[1]) + "% - Delay: " + str(gate[2]) + "ns")
         
+        coupling_map = [[] for _ in range(self.num_qubits)]
+
+        for q1, q2 in self.edges:
+            coupling_map[q1].append(q2)
+            coupling_map[q2].append(q1)
+        
         print("    Coupling Map:")
-        for node in self.coupling_map.nodes():
-            neighbors = list(self.coupling_map.neighbors(node))
-            print("        Q" + str(node) + " connected to: " + str(neighbors))
-    
+        for qubit, neighbors in enumerate(coupling_map):
+            neighbors_str = ", ".join(str(n) for n in sorted(neighbors))
+            print("        Q" + str(qubit) + " -> " + neighbors_str)
+        
     def transpile_circuit(self, quantum_circuit):
         if quantum_circuit.num_qubits > self.num_qubits:
             raise ValueError("Circuit too large for device")
 
         gate_names = [gate[0] for gate in self.gates]
 
-        print(list(self.coupling_map.edges()))
-
-        coupling = CouplingMap(couplinglist=list(self.coupling_map.edges()))
+        coupling = CouplingMap(couplinglist=self.edges)
 
         new_quantum_circuit = transpile(
             quantum_circuit,

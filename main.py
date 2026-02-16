@@ -33,5 +33,5 @@ result = sim.run(new_qc, shots=1000).result()
 counts = result.get_counts()
 print(counts)
 
-print(qc.draw())
-print(new_qc.draw())
+#print(qc.draw())
+#print(new_qc.draw())
