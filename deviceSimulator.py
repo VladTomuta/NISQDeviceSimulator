@@ -17,39 +17,25 @@ class DeviceSimulator:
             "measure": np.eye(2, dtype=complex)
         }
         self.two_qubit_matrices = two_qubit_matrices = {
-            "CNOT": np.array([
+            "cx": np.array([
                 [1, 0, 0, 0],
                 [0, 1, 0, 0],
                 [0, 0, 0, 1],
                 [0, 0, 1, 0]
             ], dtype=complex),
 
-            "CZ": np.array([
+            "cz": np.array([
                 [1, 0, 0, 0],
                 [0, 1, 0, 0],
                 [0, 0, 1, 0],
                 [0, 0, 0, -1]
             ], dtype=complex),
 
-            "SWAP": np.array([
+            "swap": np.array([
                 [1, 0, 0, 0],
                 [0, 0, 1, 0],
                 [0, 1, 0, 0],
                 [0, 0, 0, 1]
-            ], dtype=complex),
-
-            "CPhase(pi/2)": np.array([
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 1, 0],
-                [0, 0, 0, 1j]
-            ], dtype=complex),
-
-            "CPhase(pi/4)": np.array([
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 1, 0],
-                [0, 0, 0, np.exp(1j*np.pi/4)]
             ], dtype=complex)
         }
 
@@ -69,6 +55,59 @@ class DeviceSimulator:
 
         return K0 @ rho @ K0.conj().T + K1 @ rho @ K1.conj().T
     
+    def lift_two_qubit_gate(self, gate_matrix, targets):
+        operations = [np.eye(2, dtype=complex) for _ in range(self.circuit.num_qubits - 1)]
+        operations[targets[0]] = gate_matrix
+
+        #print("Operations:")
+        #print(operations)
+
+        return reduce(np.kron, operations)
+    
+    def swap_qubit_to_a_position(self, rho, start_positon, end_position):
+        while start_positon != end_position: 
+            swap_gate = self.lift_two_qubit_gate(self.two_qubit_matrices["swap"], [start_positon])
+            rho = swap_gate @ rho @ swap_gate.conj().T
+
+            start_positon+=1
+
+        return rho
+    
+    def reverse_swap_qubit_to_a_position(self, rho, start_positon, end_position):
+        while start_positon != end_position: 
+            swap_gate = self.lift_two_qubit_gate(self.two_qubit_matrices["swap"], [start_positon])
+            rho = swap_gate @ rho @ swap_gate.conj().T
+
+            start_positon-=1
+
+        return rho
+    
+    def apply_two_qubit_gate_with_bitflip(self, rho, gate_matrix, targets):
+        p_error = self.gate_info[gate_matrix]["Error rate"]
+        
+        #Move qubits one next to the other in the density matrix
+        if(targets[0] < targets[1]):
+            rho = self.swap_qubit_to_a_position(rho, targets[0], targets[1] - 1)
+        else:
+            rho = self.swap_qubit_to_a_position(rho, targets[1], targets[0])
+        
+        #Apply Gate
+        G_full = self.lift_two_qubit_gate(self.two_qubit_matrices[gate_matrix], targets)
+        X_full = self.lift_single_qubit_gate(self.single_qubit_matrices["x"], targets[1])
+
+        K0 = np.sqrt(1 - p_error) * G_full
+        K1 = np.sqrt(p_error) * X_full @ G_full
+
+        rho = K0 @ rho @ K0.conj().T + K1 @ rho @ K1.conj().T
+
+        #Move qubits back to the original position
+        if(targets[0] < targets[1]):
+            rho = self.reverse_swap_qubit_to_a_position(rho, targets[1] - 1, targets[0])
+        else:
+            rho = self.reverse_swap_qubit_to_a_position(rho, targets[0], targets[1])
+        
+        return rho
+
     def simulate_circuit(self, shots):
         dim = 2**self.circuit.num_qubits
         rho = np.zeros((dim, dim), dtype=complex)
@@ -77,6 +116,10 @@ class DeviceSimulator:
         for gate in self.circuit.gates:
             if gate.name in self.single_qubit_matrices:
                 rho = self.apply_gate_with_bitflip(rho, gate.name, gate.qubits[0])
+            elif gate.name in self.two_qubit_matrices:
+                rho = self.apply_two_qubit_gate_with_bitflip(rho, gate.name, gate.qubits)
+            else:
+                raise ValueError("The gate is unkown for the simulator.")
 
         self.simulate_measurements(rho, shots)
 
@@ -85,8 +128,11 @@ class DeviceSimulator:
         
         states = np.arange(2**self.circuit.num_qubits)
 
-        print(states)
-        print(probabilities)
+        #print(states)
+        #print(probabilities)
+
+        #print("Trace:", np.trace(rho))
+        #print("Sum diag:", np.sum(np.diag(rho)))
         
         outcomes = np.random.choice(states, size=shots, p=probabilities)
         outcomes_str = [format(o, f'0{self.circuit.num_qubits}b') for o in outcomes]
