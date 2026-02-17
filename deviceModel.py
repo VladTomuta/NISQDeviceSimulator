@@ -2,10 +2,12 @@ from qiskit import transpile
 from qiskit.transpiler import CouplingMap
 
 class VirtualNISQDevice:
-    def __init__(self, num_qubits, gates_spec, edges):
+    def __init__(self, num_qubits, gates_spec, edges, t1_time, t2_time):
         self.num_qubits = num_qubits
         self.gates = gates_spec
         self.edges = edges
+        self.t1_time = t1_time
+        self.t2_time = t2_time
     
     def print_properties(self):
         print("The properties for this device are:")

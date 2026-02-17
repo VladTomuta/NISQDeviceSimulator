@@ -27,8 +27,10 @@ gates = [
 ]
 #edges = [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7)]
 edges = [(0, 1), (0, 2), (0, 3), (0, 4)]
+t1_time = [0.00001, 0.00003, 0.00007, 0.00004, 0.0001]
+t2_time = [0.00001, 0.00002, 0.00005, 0.00004, 0.00015]
 
-device = VirtualNISQDevice(nr_qubits, gates, edges)
+device = VirtualNISQDevice(nr_qubits, gates, edges, t1_time, t2_time)
 device.print_properties()
 
 print("Load circuit from file..")
