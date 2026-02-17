@@ -40,6 +40,19 @@ class VirtualNISQDevice:
             coupling_map=coupling,
             routing_method="sabre"
         )
+        """
+        print("Optimized transpile")
+
+        new_quantum_circuit = transpile(
+            quantum_circuit,
+            basis_gates=gate_names,
+            coupling_map=coupling,
+            routing_method="lookahead",          # or "lookahead" for fewer SWAPs
+            optimization_level=3,            # heavy optimization
+            initial_layout=quantum_circuit.qubits,
+            seed_transpiler=42               # reproducible results
+        )
+        """
 
         final_indices = new_quantum_circuit.layout.final_index_layout()
         self.logical_to_physical_mapping = {i: phys_idx for i, phys_idx in enumerate(final_indices)}

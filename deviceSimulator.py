@@ -59,6 +59,12 @@ class DeviceSimulator:
         operations = [np.eye(2, dtype=complex) for _ in range(self.circuit.num_qubits - 1)]
         operations[targets[0]] = gate_matrix
 
+        #print("Rho for lift_two_qubit_gate:")
+        #print(operations)
+        #print(gate_matrix)
+        #print(targets)
+        #print(reduce(np.kron, operations))
+
         #print("Operations:")
         #print(operations)
 
@@ -75,30 +81,38 @@ class DeviceSimulator:
     
     def reverse_swap_qubit_to_a_position(self, rho, start_positon, end_position):
         while start_positon != end_position: 
-            swap_gate = self.lift_two_qubit_gate(self.two_qubit_matrices["swap"], [start_positon])
+            swap_gate = self.lift_two_qubit_gate(self.two_qubit_matrices["swap"], [start_positon -1])
             rho = swap_gate @ rho @ swap_gate.conj().T
 
             start_positon-=1
 
         return rho
-    
+
     def apply_two_qubit_gate_with_bitflip(self, rho, gate_matrix, targets):
         p_error = self.gate_info[gate_matrix]["Error rate"]
         
+        #print("\nTargets:")
+        #print(targets)
+
         #Move qubits one next to the other in the density matrix
         if(targets[0] < targets[1]):
             rho = self.swap_qubit_to_a_position(rho, targets[0], targets[1] - 1)
+            new_targets_after_swap = [targets[1] - 1, targets[1]]
         else:
             rho = self.swap_qubit_to_a_position(rho, targets[1], targets[0])
+            new_targets_after_swap = [targets[0] - 1, targets[0]]
         
         #Apply Gate
-        G_full = self.lift_two_qubit_gate(self.two_qubit_matrices[gate_matrix], targets)
-        X_full = self.lift_single_qubit_gate(self.single_qubit_matrices["x"], targets[1])
+        G_full = self.lift_two_qubit_gate(self.two_qubit_matrices[gate_matrix], new_targets_after_swap)
+        X_full = self.lift_single_qubit_gate(self.single_qubit_matrices["x"], new_targets_after_swap[1])
 
         K0 = np.sqrt(1 - p_error) * G_full
         K1 = np.sqrt(p_error) * X_full @ G_full
 
         rho = K0 @ rho @ K0.conj().T + K1 @ rho @ K1.conj().T
+
+        #print("\nTargets:")
+        #print(targets)
 
         #Move qubits back to the original position
         if(targets[0] < targets[1]):
@@ -113,6 +127,8 @@ class DeviceSimulator:
         rho = np.zeros((dim, dim), dtype=complex)
         rho[0, 0] = 1.0
 
+        gate_index = 0
+
         for gate in self.circuit.gates:
             if gate.name in self.single_qubit_matrices:
                 rho = self.apply_gate_with_bitflip(rho, gate.name, gate.qubits[0])
@@ -120,19 +136,26 @@ class DeviceSimulator:
                 rho = self.apply_two_qubit_gate_with_bitflip(rho, gate.name, gate.qubits)
             else:
                 raise ValueError("The gate is unkown for the simulator.")
+            
+            gate_index += 1
+            if gate_index % 1000 == 0:
+                print("Step " + str(gate_index) + " out of " + str(len(self.circuit.gates)) + " done.")
 
         self.simulate_measurements(rho, shots)
 
     def simulate_measurements(self, rho, shots):
         probabilities = np.real(np.diag(rho))
+        probabilities = np.clip(probabilities, 0, None)
+        probabilities /= np.sum(probabilities)
+
         
         states = np.arange(2**self.circuit.num_qubits)
 
-        #print(states)
-        #print(probabilities)
+        #print("\nFINAL STATES:")
+        #print(rho)
 
-        #print("Trace:", np.trace(rho))
-        #print("Sum diag:", np.sum(np.diag(rho)))
+        print("Trace:", np.trace(rho))
+        print("Sum diag:", np.sum(np.diag(rho)))
         
         outcomes = np.random.choice(states, size=shots, p=probabilities)
         outcomes_str = [format(o, f'0{self.circuit.num_qubits}b') for o in outcomes]
@@ -140,6 +163,8 @@ class DeviceSimulator:
         counts = {}
         for o in outcomes_str:
             counts[o] = counts.get(o, 0) + 1
+
+        #print(counts)
         
         counts = self.remap_measurements(counts)
 
@@ -157,7 +182,7 @@ class DeviceSimulator:
                 new_bits[logical_idx] = bits[physical_idx]
 
             new_bitstring = ''.join(new_bits)
-            new_counts[new_bitstring] = new_counts.get(new_bitstring, 0) + c
+            new_counts[new_bitstring[::-1]] = new_counts.get(new_bitstring, 0) + c
 
             new_counts = dict(sorted(new_counts.items(), key=lambda item: int(item[0], 2)))
 
