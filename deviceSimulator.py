@@ -1,12 +1,16 @@
 import numpy as np
 
 class DeviceSimulator:
-    def __init__(self, device, circuit):
-        self.device = device
+    def __init__(self, circuit, apply_error_rates = True, apply_decoherence = True):
+        #self.device = device
         self.circuit = circuit
         self.num_qubits = circuit.num_qubits
-        self.gate_info = {g[0]: {"Error rate": g[1]/100, "Delay": g[2]} for g in device.gates}
+        self.apply_error_rates = apply_error_rates
+        self.apply_decoherence = apply_decoherence
+        #self.gate_info = {g[0]: {"Error rate": g[1]/100, "Delay": g[2]} for g in device.gates}
         self.measured_qubits = []
+
+        print(self.num_qubits)
 
         self.single_qubit_matrices = {
             "x": np.array([[0, 1], [1, 0]], dtype=complex),
@@ -60,7 +64,9 @@ class DeviceSimulator:
         return rho_tensor.reshape((2**self.num_qubits, 2**self.num_qubits))
 
     def apply_gate_with_bitflip(self, rho, gate_name, qubit):
-        error_probability = self.gate_info[gate_name]["Error rate"]
+        error_probability = self.circuit.gate_info[gate_name]["Error rate"]
+        if self.apply_error_rates == False:
+            error_probability = 0
         gate_matrix = self.single_qubit_matrices[gate_name]
 
         K0 = np.sqrt(1 - error_probability) * gate_matrix
@@ -71,7 +77,9 @@ class DeviceSimulator:
         return rho
 
     def apply_two_qubit_gate_with_bitflip(self, rho, gate_name, targets):
-        error_probability = self.gate_info[gate_name]["Error rate"]
+        error_probability = self.circuit.gate_info[gate_name]["Error rate"]
+        if self.apply_error_rates == False:
+            error_probability = 0
         q1, q2 = targets
         rho_clean = self.apply_two_qubit_operator(rho, self.two_qubit_matrices[gate_name], q1, q2)
 
@@ -82,17 +90,15 @@ class DeviceSimulator:
 
     def apply_delay_decoherence(self, rho, idle_qubits, delta_t):
         for q in idle_qubits:
-            t1_time = self.device.t1_time[q]
-            t2_time = self.device.t2_time[q]
+            t1_time = self.circuit.t1_times[q]
+            t2_time = self.circuit.t2_times[q]
 
-            # Amplitude damping
             p1 = 1 - np.exp(-delta_t/t1_time)
             K0 = np.array([[1, 0], [0, np.sqrt(1-p1)]],dtype=complex)
             K1 = np.array([[0, np.sqrt(p1)], [0, 0]],dtype=complex)
             rho = self.apply_single_qubit_operator(rho, K0, q) + \
                   self.apply_single_qubit_operator(rho, K1, q)
 
-            # Pure dephasing
             inv_Tphi = max(0,(1/t2_time) - (1/(2*t1_time)))
             if inv_Tphi > 0:
                 Tphi = 1/inv_Tphi
@@ -103,17 +109,17 @@ class DeviceSimulator:
                       self.apply_single_qubit_operator(rho, K1, q)
         return rho
 
-    # ---------------- Circuit simulation ----------------
     def simulate_circuit(self, shots):
+        print(self.num_qubits)
         dim = 2**self.num_qubits
         rho = np.zeros((dim, dim), dtype=complex)
         rho[0, 0] = 1.0
 
         for gate_index, gate in enumerate(self.circuit.gates,1):
-            gate_delay = self.gate_info[gate.name]["Delay"]
-
-            idle_qubits = [q for q in range(self.num_qubits) if q not in gate.qubits + self.measured_qubits]
-            rho = self.apply_delay_decoherence(rho, idle_qubits, gate_delay)
+            if self.apply_decoherence == True:
+                gate_delay = self.circuit.gate_info[gate.name]["Delay"]
+                idle_qubits = [q for q in range(self.num_qubits) if q not in gate.qubits + self.measured_qubits]
+                rho = self.apply_delay_decoherence(rho, idle_qubits, gate_delay)
 
             if gate.name in self.single_qubit_matrices:
                 rho = self.apply_gate_with_bitflip(rho, gate.name, gate.qubits[0])
@@ -154,7 +160,7 @@ class DeviceSimulator:
         for bitstring,c in counts.items():
             bits = list(bitstring)
             new_bits = ['0']*self.num_qubits
-            for logical_idx, physical_idx in self.device.logical_to_physical_mapping.items():
+            for logical_idx, physical_idx in self.circuit.logical_to_physical_mapping.items():
                 new_bits[logical_idx] = bits[physical_idx]
             new_bitstring = ''.join(new_bits)
             rev = new_bitstring[::-1]

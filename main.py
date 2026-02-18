@@ -8,21 +8,19 @@ import circuitParser as parser
 
 nr_qubits = 5
 gates = [
-    ("x", 0.00002, 50),
-    ("h", 0.00001, 50),
+    ("x", 0.00008, 50),
+    ("h", 0.0001, 50),
     ("s", 0.000005, 50),
     ("t", 0.000005, 50),
-    ("cx", 0.0002, 300),
-    ("swap", 0.00002, 200),
-    ("measure", 0.0001, 100)
+    ("cx", 0.0003, 300),
+    ("swap", 0.00004, 200),
+    ("measure", 0.0002, 100)
 ]
 edges = [(0, 1), (0, 2), (0, 3), (0, 4)]
-t1_time = [5e8, 1e9, 2.5e8, 7.5e9, 1.5e9]
-t2_time = [4e8, 9e8, 2e8, 6e8, 1.2e9]
+t1_times = [5e8, 1e9, 2.5e8, 7.5e9, 1.5e9]
+t2_times = [4e8, 9e8, 2e8, 6e8, 1.2e9]
 
-print(t1_time)
-
-device = VirtualNISQDevice(nr_qubits, gates, edges, t1_time, t2_time)
+device = VirtualNISQDevice(nr_qubits, gates, edges, t1_times, t2_times)
 device.print_properties()
 
 print("Load circuit from file..")
@@ -33,7 +31,11 @@ new_qc = device.transpile_circuit(qc)
 
 print("Start parsing the circuit..")
 
-circuit_representation = parser.get_circuit_data(new_qc)
+print(new_qc.num_qubits)
+
+circuit_representation = parser.get_circuit_data(new_qc, device)
+
+print(circuit_representation.num_qubits)
 
 sim = AerSimulator()
 
@@ -43,7 +45,7 @@ result = sim.run(new_qc, shots=10000).result()
 counts = result.get_counts()
 print(counts)
 
-simulator = DeviceSimulator(device, circuit_representation)
+simulator = DeviceSimulator(circuit_representation, True, True)
 
 print(len(circuit_representation.gates))
 

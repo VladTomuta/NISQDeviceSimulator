@@ -2,12 +2,12 @@ from qiskit import transpile
 from qiskit.transpiler import CouplingMap
 
 class VirtualNISQDevice:
-    def __init__(self, num_qubits, gates_spec, edges, t1_time, t2_time):
+    def __init__(self, num_qubits, gates_spec, edges, t1_times, t2_times):
         self.num_qubits = num_qubits
         self.gates = gates_spec
         self.edges = edges
-        self.t1_time = t1_time
-        self.t2_time = t2_time
+        self.t1_times = t1_times
+        self.t2_times = t2_times
     
     def print_properties(self):
         print("The properties for this device are:")
@@ -42,19 +42,6 @@ class VirtualNISQDevice:
             coupling_map=coupling,
             routing_method="sabre"
         )
-        """
-        print("Optimized transpile")
-
-        new_quantum_circuit = transpile(
-            quantum_circuit,
-            basis_gates=gate_names,
-            coupling_map=coupling,
-            routing_method="lookahead",          # or "lookahead" for fewer SWAPs
-            optimization_level=3,            # heavy optimization
-            initial_layout=quantum_circuit.qubits,
-            seed_transpiler=42               # reproducible results
-        )
-        """
 
         final_indices = new_quantum_circuit.layout.final_index_layout()
         self.logical_to_physical_mapping = {i: phys_idx for i, phys_idx in enumerate(final_indices)}
