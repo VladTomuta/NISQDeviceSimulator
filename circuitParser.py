@@ -23,7 +23,6 @@ def load_circuit_from_file(filename):
 
 def get_circuit_data(quantum_circuit, device):
     circuit_representation = CircuitRepresentation(quantum_circuit.num_qubits, device)
-    print(circuit_representation.num_qubits)
 
     for instruction, qargs, cargs in quantum_circuit.data:
         name = instruction.name

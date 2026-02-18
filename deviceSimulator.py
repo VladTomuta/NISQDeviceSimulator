@@ -2,15 +2,11 @@ import numpy as np
 
 class DeviceSimulator:
     def __init__(self, circuit, apply_error_rates = True, apply_decoherence = True):
-        #self.device = device
         self.circuit = circuit
         self.num_qubits = circuit.num_qubits
         self.apply_error_rates = apply_error_rates
         self.apply_decoherence = apply_decoherence
-        #self.gate_info = {g[0]: {"Error rate": g[1]/100, "Delay": g[2]} for g in device.gates}
         self.measured_qubits = []
-
-        print(self.num_qubits)
 
         self.single_qubit_matrices = {
             "x": np.array([[0, 1], [1, 0]], dtype=complex),
@@ -110,7 +106,6 @@ class DeviceSimulator:
         return rho
 
     def simulate_circuit(self, shots):
-        print(self.num_qubits)
         dim = 2**self.num_qubits
         rho = np.zeros((dim, dim), dtype=complex)
         rho[0, 0] = 1.0
@@ -142,16 +137,12 @@ class DeviceSimulator:
         probs /= np.sum(probs)
 
         states = np.arange(2**self.num_qubits)
-        print("shots: " + str(shots))
         outcomes = np.random.choice(states, size=shots, p=probs)
-        print("outcomes len: " + str(len(outcomes)))
 
         counts = {}
         for o in outcomes:
             bstr = format(o,f'0{self.num_qubits}b')
             counts[bstr] = counts.get(bstr,0) + 1
-
-        print(counts)
 
         return self.remap_measurements(counts)
 
