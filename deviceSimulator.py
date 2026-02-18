@@ -1,12 +1,13 @@
 import numpy as np
-from functools import reduce
 
 class DeviceSimulator:
     def __init__(self, device, circuit):
         self.device = device
         self.circuit = circuit
-        self.gate_info = {g[0]: {"Error rate": g[1]/100, "Delay": g[2]} for g in self.device.gates}
+        self.num_qubits = circuit.num_qubits
+        self.gate_info = {g[0]: {"Error rate": g[1]/100, "Delay": g[2]} for g in device.gates}
         self.measured_qubits = []
+
         self.single_qubit_matrices = {
             "x": np.array([[0, 1], [1, 0]], dtype=complex),
             "y": np.array([[0, -1j], [1j, 0]], dtype=complex),
@@ -17,145 +18,101 @@ class DeviceSimulator:
             "i": np.eye(2, dtype=complex),
             "measure": np.eye(2, dtype=complex)
         }
+
         self.two_qubit_matrices = {
-            "cx": np.array([
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 0, 1],
-                [0, 0, 1, 0]
-            ], dtype=complex),
-
-            "cz": np.array([
-                [1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 1, 0],
-                [0, 0, 0, -1]
-            ], dtype=complex),
-
-            "swap": np.array([
-                [1, 0, 0, 0],
-                [0, 0, 1, 0],
-                [0, 1, 0, 0],
-                [0, 0, 0, 1]
-            ], dtype=complex)
+            "cx": np.array([[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 0, 1],
+                            [0, 0, 1, 0]], dtype=complex),
+            "cz": np.array([[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 1, 0],
+                            [0, 0, 0, -1]], dtype=complex),
+            "swap": np.array([[1, 0, 0, 0],
+                              [0, 0, 1, 0],
+                              [0, 1, 0, 0],
+                              [0, 0, 0, 1]], dtype=complex)
         }
 
-    def lift_single_qubit_gate(self, gate_matrix, target):
-        operations = [np.eye(2, dtype=complex) for _ in range(self.circuit.num_qubits)]
-        operations[target] = gate_matrix
-        return reduce(np.kron, operations)
-    
-    def apply_gate_with_bitflip(self, rho, gate_matrix, target):
-        p_error = self.gate_info[gate_matrix]["Error rate"]
+    def apply_single_qubit_operator(self, rho, operator, qubit):
+        rho_tensor = rho.reshape([2]*self.num_qubits*2)
 
-        G_full = self.lift_single_qubit_gate(self.single_qubit_matrices[gate_matrix], target)
-        X_full = self.lift_single_qubit_gate(self.single_qubit_matrices["x"], target)
+        rho_tensor = np.tensordot(operator, rho_tensor, axes=([1], [qubit]))
+        rho_tensor = np.moveaxis(rho_tensor, 0, qubit)
 
-        K0 = np.sqrt(1 - p_error) * G_full
-        K1 = np.sqrt(p_error) * X_full @ G_full
+        rho_tensor = np.tensordot(operator.conj(), rho_tensor, axes=([1], [qubit+self.num_qubits]))
+        rho_tensor = np.moveaxis(rho_tensor, 0, qubit+self.num_qubits)
 
-        return K0 @ rho @ K0.conj().T + K1 @ rho @ K1.conj().T
-    
-    def lift_two_qubit_gate(self, gate_matrix, targets):
-        operations = [np.eye(2, dtype=complex) for _ in range(self.circuit.num_qubits - 1)]
-        operations[targets[0]] = gate_matrix
+        return rho_tensor.reshape((2**self.num_qubits, 2**self.num_qubits))
 
-        return reduce(np.kron, operations)
-    
-    def swap_qubit_to_a_position(self, rho, start_positon, end_position):
-        while start_positon != end_position: 
-            swap_gate = self.lift_two_qubit_gate(self.two_qubit_matrices["swap"], [start_positon])
-            rho = swap_gate @ rho @ swap_gate.conj().T
+    def apply_two_qubit_operator(self, rho, operator, q1, q2):
+        if q1 > q2:
+            q1, q2 = q2, q1
+        rho_tensor = rho.reshape([2]*self.num_qubits*2)
+        gate_matrix = operator.reshape(2,2,2,2)
 
-            start_positon+=1
+        rho_tensor = np.tensordot(gate_matrix, rho_tensor, axes=([2, 3],[q1, q2]))
+        rho_tensor = np.moveaxis(rho_tensor, [0, 1], [q1, q2])
 
-        return rho
-    
-    def reverse_swap_qubit_to_a_position(self, rho, start_positon, end_position):
-        while start_positon != end_position: 
-            swap_gate = self.lift_two_qubit_gate(self.two_qubit_matrices["swap"], [start_positon -1])
-            rho = swap_gate @ rho @ swap_gate.conj().T
+        rho_tensor = np.tensordot(gate_matrix.conj(), rho_tensor, axes=([2, 3],[q1+self.num_qubits, q2+self.num_qubits]))
+        rho_tensor = np.moveaxis(rho_tensor, [0, 1], [q1+self.num_qubits, q2+self.num_qubits])
 
-            start_positon-=1
+        return rho_tensor.reshape((2**self.num_qubits, 2**self.num_qubits))
 
+    def apply_gate_with_bitflip(self, rho, gate_name, qubit):
+        error_probability = self.gate_info[gate_name]["Error rate"]
+        gate_matrix = self.single_qubit_matrices[gate_name]
+
+        K0 = np.sqrt(1 - error_probability) * gate_matrix
+        K1 = np.sqrt(error_probability) * self.single_qubit_matrices["x"] @ gate_matrix
+
+        rho = self.apply_single_qubit_operator(rho, K0, qubit) + \
+              self.apply_single_qubit_operator(rho, K1, qubit)
         return rho
 
-    def apply_two_qubit_gate_with_bitflip(self, rho, gate_matrix, targets):
-        p_error = self.gate_info[gate_matrix]["Error rate"]
+    def apply_two_qubit_gate_with_bitflip(self, rho, gate_name, targets):
+        error_probability = self.gate_info[gate_name]["Error rate"]
+        q1, q2 = targets
+        rho_clean = self.apply_two_qubit_operator(rho, self.two_qubit_matrices[gate_name], q1, q2)
 
-        if(targets[0] < targets[1]):
-            rho = self.swap_qubit_to_a_position(rho, targets[0], targets[1] - 1)
-            new_targets_after_swap = [targets[1] - 1, targets[1]]
-        else:
-            rho = self.swap_qubit_to_a_position(rho, targets[1], targets[0])
-            new_targets_after_swap = [targets[0] - 1, targets[0]]
-        
-        G_full = self.lift_two_qubit_gate(self.two_qubit_matrices[gate_matrix], new_targets_after_swap)
-        X_full = self.lift_single_qubit_gate(self.single_qubit_matrices["x"], new_targets_after_swap[1])
+        rho_flip = self.apply_single_qubit_operator(rho_clean, self.single_qubit_matrices["x"], q1)
+        rho_flip = self.apply_single_qubit_operator(rho_clean, self.single_qubit_matrices["x"], q2)
 
-        K0 = np.sqrt(1 - p_error) * G_full
-        K1 = np.sqrt(p_error) * X_full @ G_full
-
-        rho = K0 @ rho @ K0.conj().T + K1 @ rho @ K1.conj().T
-
-        if(targets[0] < targets[1]):
-            rho = self.reverse_swap_qubit_to_a_position(rho, targets[1] - 1, targets[0])
-        else:
-            rho = self.reverse_swap_qubit_to_a_position(rho, targets[0], targets[1])
-        
-        return rho
+        return (1 - error_probability) * rho_clean + error_probability * rho_flip
 
     def apply_delay_decoherence(self, rho, idle_qubits, delta_t):
-        for qubit in idle_qubits:
+        for q in idle_qubits:
+            t1_time = self.device.t1_time[q]
+            t2_time = self.device.t2_time[q]
 
-            t1_time = self.device.t1_time[qubit]
-            t2_time = self.device.t2_time[qubit]
+            # Amplitude damping
+            p1 = 1 - np.exp(-delta_t/t1_time)
+            K0 = np.array([[1, 0], [0, np.sqrt(1-p1)]],dtype=complex)
+            K1 = np.array([[0, np.sqrt(p1)], [0, 0]],dtype=complex)
+            rho = self.apply_single_qubit_operator(rho, K0, q) + \
+                  self.apply_single_qubit_operator(rho, K1, q)
 
-            decay_probability = 1 - np.exp(-delta_t / t1_time)
-
-            K0 = np.array([[1, 0],
-                        [0, np.sqrt(1 - decay_probability)]], dtype=complex)
-            K1 = np.array([[0, np.sqrt(decay_probability)],
-                        [0, 0]], dtype=complex)
-
-            K0_full = self.lift_single_qubit_gate(K0, qubit)
-            K1_full = self.lift_single_qubit_gate(K1, qubit)
-
-            rho = K0_full @ rho @ K0_full.conj().T + \
-                K1_full @ rho @ K1_full.conj().T
-
-            inv_Tphi = max(0, (1/t2_time) - (1/(2*t1_time)))
+            # Pure dephasing
+            inv_Tphi = max(0,(1/t2_time) - (1/(2*t1_time)))
             if inv_Tphi > 0:
-                Tphi = 1 / inv_Tphi
-                dephasing_probability = 1 - np.exp(-delta_t / Tphi)
-
-                K0 = np.sqrt(1 - dephasing_probability) * np.eye(2)
-                K1 = np.sqrt(dephasing_probability) * np.array([[1, 0],
-                                                                [0, -1]], dtype=complex)
-
-                K0_full = self.lift_single_qubit_gate(K0, qubit)
-                K1_full = self.lift_single_qubit_gate(K1, qubit)
-
-                rho = K0_full @ rho @ K0_full.conj().T + \
-                    K1_full @ rho @ K1_full.conj().T
-
+                Tphi = 1/inv_Tphi
+                p2 = 1 - np.exp(-delta_t/Tphi)
+                K0 = np.sqrt(1-p2) * np.eye(2)
+                K1 = np.sqrt(p2) * np.array([[1, 0], [0, -1]],dtype=complex)
+                rho = self.apply_single_qubit_operator(rho, K0, q) + \
+                      self.apply_single_qubit_operator(rho, K1, q)
         return rho
 
+    # ---------------- Circuit simulation ----------------
     def simulate_circuit(self, shots):
-        dim = 2**self.circuit.num_qubits
+        dim = 2**self.num_qubits
         rho = np.zeros((dim, dim), dtype=complex)
         rho[0, 0] = 1.0
 
-        gate_index = 0
-
-        for gate in self.circuit.gates:
+        for gate_index, gate in enumerate(self.circuit.gates,1):
             gate_delay = self.gate_info[gate.name]["Delay"]
 
-            idle_qubits = [
-                q for q in range(self.circuit.num_qubits)
-                if q not in gate.qubits + self.measured_qubits
-            ]
-
+            idle_qubits = [q for q in range(self.num_qubits) if q not in gate.qubits + self.measured_qubits]
             rho = self.apply_delay_decoherence(rho, idle_qubits, gate_delay)
 
             if gate.name in self.single_qubit_matrices:
@@ -163,58 +120,45 @@ class DeviceSimulator:
             elif gate.name in self.two_qubit_matrices:
                 rho = self.apply_two_qubit_gate_with_bitflip(rho, gate.name, gate.qubits)
             else:
-                raise ValueError("The gate is unkown for the simulator.")
-            
+                raise ValueError("Unknown gate: "+gate.name)
+
             if gate.name == "measure":
                 self.measured_qubits.append(gate.qubits[0])
-            
-            gate_index += 1
-            if gate_index % 1000 == 0:
-                print("Step " + str(gate_index) + " out of " + str(len(self.circuit.gates)) + " done.")
 
-        self.simulate_measurements(rho, shots)
+            if gate_index % 1000 == 0:
+                print(f"Step {gate_index} / {len(self.circuit.gates)} done.")
+
+        return self.simulate_measurements(rho, shots)
 
     def simulate_measurements(self, rho, shots):
-        probabilities = np.real(np.diag(rho))
-        probabilities = np.clip(probabilities, 0, None)
-        probabilities /= np.sum(probabilities)
+        probs = np.real(np.diag(rho))
+        probs = np.clip(probs,0,None)
+        probs /= np.sum(probs)
 
-        
-        states = np.arange(2**self.circuit.num_qubits)
+        states = np.arange(2**self.num_qubits)
+        print("shots: " + str(shots))
+        outcomes = np.random.choice(states, size=shots, p=probs)
+        print("outcomes len: " + str(len(outcomes)))
 
-        #print("\nFINAL STATES:")
-        #print(rho)
-
-        print("Trace:", np.trace(rho))
-        print("Sum diag:", np.sum(np.diag(rho)))
-        
-        outcomes = np.random.choice(states, size=shots, p=probabilities)
-        outcomes_str = [format(o, f'0{self.circuit.num_qubits}b') for o in outcomes]
-        
         counts = {}
-        for o in outcomes_str:
-            counts[o] = counts.get(o, 0) + 1
-
-        #print(counts)
-        
-        counts = self.remap_measurements(counts)
+        for o in outcomes:
+            bstr = format(o,f'0{self.num_qubits}b')
+            counts[bstr] = counts.get(bstr,0) + 1
 
         print(counts)
-        return counts
+
+        return self.remap_measurements(counts)
 
     def remap_measurements(self, counts):
         new_counts = {}
-
-        for bitstring, c in counts.items():
+        for bitstring,c in counts.items():
             bits = list(bitstring)
-            new_bits = ['0'] * self.circuit.num_qubits
-
+            new_bits = ['0']*self.num_qubits
             for logical_idx, physical_idx in self.device.logical_to_physical_mapping.items():
                 new_bits[logical_idx] = bits[physical_idx]
-
             new_bitstring = ''.join(new_bits)
-            new_counts[new_bitstring[::-1]] = new_counts.get(new_bitstring, 0) + c
+            rev = new_bitstring[::-1]
+            new_counts[rev] = new_counts.get(rev, 0) + c
 
-            new_counts = dict(sorted(new_counts.items(), key=lambda item: int(item[0], 2)))
-
+        new_counts = dict(sorted(new_counts.items(), key=lambda item:int(item[0],2)))
         return new_counts
