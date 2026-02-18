@@ -59,7 +59,7 @@ class DeviceSimulator:
 
         return rho_tensor.reshape((2**self.num_qubits, 2**self.num_qubits))
 
-    def apply_gate_with_bitflip(self, rho, gate_name, qubit):
+    def apply_single_qubit_gate_with_bitflip(self, rho, gate_name, qubit):
         error_probability = self.circuit.gate_info[gate_name]["Error rate"]
         if self.apply_error_rates == False:
             error_probability = 0
@@ -117,7 +117,7 @@ class DeviceSimulator:
                 rho = self.apply_delay_decoherence(rho, idle_qubits, gate_delay)
 
             if gate.name in self.single_qubit_matrices:
-                rho = self.apply_gate_with_bitflip(rho, gate.name, gate.qubits[0])
+                rho = self.apply_single_qubit_gate_with_bitflip(rho, gate.name, gate.qubits[0])
             elif gate.name in self.two_qubit_matrices:
                 rho = self.apply_two_qubit_gate_with_bitflip(rho, gate.name, gate.qubits)
             else:

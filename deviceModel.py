@@ -40,7 +40,10 @@ class VirtualNISQDevice:
             quantum_circuit,
             basis_gates=gate_names,
             coupling_map=coupling,
-            routing_method="sabre"
+            routing_method="sabre",
+            layout_method="sabre",
+            optimization_level=3,
+            seed_transpiler=42
         )
 
         final_indices = new_quantum_circuit.layout.final_index_layout()
